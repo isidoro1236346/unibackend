@@ -318,7 +318,7 @@ async function generarPDFEvento(evento, usuario) {
   const layoutData = obtener('Layout', 'layout') || null;
   if (layoutData && layoutData.url_imagen) {
     try {
-      const base = process.env.API_BASE_URL || 'https://unibackend-production-a0f8.up.railway.app';
+      const base = process.env.API_BASE_URL || 'https://unibackend-production-9618.up.railway.app';
       const urlRaw = layoutData.url_imagen;
       const urlFinal = /^https?:/i.test(urlRaw)
         ? urlRaw

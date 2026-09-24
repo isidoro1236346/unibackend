@@ -29,8 +29,8 @@ const frontendExists = FRONTEND_PATH ? fs.existsSync(FRONTEND_PATH) : false;
 console.log('🔍 [DEBUG] FRONTEND_PATH:', FRONTEND_PATH, '| Existe:', frontendExists);
 
   const allowedOrigins = [
-  'https://unibackend-production-a0f8.up.railway.app',
-  'https://unifrontend-production-df6e.up.railway.app',
+  'https://unibackend-production-9618.up.railway.app',
+  'https://unifrontend-production-80f7.up.railway.app',
   'http://localhost:3000',
   'http://localhost:8080',
   'http://localhost:8081',

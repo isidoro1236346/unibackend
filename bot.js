@@ -88,7 +88,9 @@ const deleteWebhookFirst = (token) => {
 // ─────────────────────────────────────────
 const startTelegramBot = async () => {
   const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-  const API_BASE_URL   = process.env.API_BASE_URL || 'https://unibackend-production-a0f8.up.railway.app';
+  const API_BASE_URL   = process.env.API_BASE_URL || 'https://unibackend-production-9618.up.railway.app';
+  
+  //const API_BASE_URL   = process.env.API_BASE_URL || 'https://unibackend-production-9618.up.railway.app';
   
   if (!TELEGRAM_TOKEN) {
     console.error('❌ Falta TELEGRAM_TOKEN en .env');

@@ -22,7 +22,8 @@ module.exports = (sequelize, DataTypes)=>{
       field: 'nombre_carrera'
   },
   habilitado:{
-    type: DataTypes.BOOLEAN,
+    type: DataTypes.INTEGER,
+    defaultValue: 1,
     allowNull: false,
     field: 'habilitado'
   },

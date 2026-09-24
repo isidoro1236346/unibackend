@@ -110,11 +110,17 @@ const startTelegramBot = async () => {
 
   try {
     // ✅ 2. LIMPIEZA NATIVA: Elimina webhook anterior y descarta mensajes en cola
-    await bot.deleteWebhook({ drop_pending_updates: true });
+    await Promise.race([
+      bot.deleteWebHook({ drop_pending_updates: true }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('deleteWebHook: timeout (10s)')), 10000))
+    ]);
     console.log('🧹 Webhook anterior eliminado y cola limpiada.');
 
     // ✅ 3. Establecer el nuevo webhook
-    await bot.setWebhook(`${API_BASE_URL}/bot/telegram/webhook`);
+    await Promise.race([
+      bot.setWebHook(`${API_BASE_URL}/bot/telegram/webhook`),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('setWebHook: timeout (10s)')), 10000))
+    ]);
     console.log(`🔗 Webhook establecido en: ${API_BASE_URL}/bot/telegram/webhook`);
     
     _botInstance = bot;

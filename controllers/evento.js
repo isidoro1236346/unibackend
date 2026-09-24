@@ -331,7 +331,7 @@ const createEvento = async (req, res) => {
           `INSERT INTO recurso (nombre_recurso, recurso_tipo, cantidad, habilitado)
            VALUES (?, ?, ?, ?)
            RETURNING idrecurso`,
-          { replacements: [recurso.nombre_recurso, recurso.recurso_tipo, recurso.cantidad || 1, true], transaction: t }
+          { replacements: [recurso.nombre_recurso, recurso.recurso_tipo, recurso.cantidad || 1, 1], transaction: t }
         );
         const nuevoIdRecurso = result[0]?.idrecurso;
         if (nuevoIdRecurso) {

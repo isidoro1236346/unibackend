@@ -180,6 +180,9 @@ function generarSVGLayout(prompt, recursos = []) {
     else if (/feria|stand|stands|expo|expositor|exposici[oó]n/.test(lower)) {
         svg = generarLayoutFeria(personCount);
     }
+    else if (/circular|redonda|ronda|mesa redonda/.test(lower)) {
+        svg = generarLayoutCircular(personCount);
+    }
     else if (/comedor|banquete|rectangulares|cena|alimentos|food/.test(lower)) {
         svg = generarLayoutComedor(personCount);
     }
@@ -188,9 +191,6 @@ function generarSVGLayout(prompt, recursos = []) {
     }
     else if (/aula|clase|sal[oó]n|escuela|colegio|conferencia|c[aá]tedra|seminario/.test(lower)) {
         svg = generarLayoutAula(personCount);
-    }
-    else if (/circular|redonda|ronda|mesa redonda/.test(lower)) {
-        svg = generarLayoutCircular(personCount);
     }
     else {
         svg = generarLayoutCircular(personCount);

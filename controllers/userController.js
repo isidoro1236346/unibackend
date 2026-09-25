@@ -120,7 +120,7 @@ const getAllUsers = asyncHandler(async (req, res) => {
   const models = getModels();
   const {User,Academico, Carrera, Daf} = models;
   const users = await User.findAll({
-    where:{ habilitado:'true' },
+    where:{ habilitado: true },
      include: [
     {
       model: Academico,

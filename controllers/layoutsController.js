@@ -174,11 +174,23 @@ function generarSVGLayout(prompt, recursos = []) {
                        parseInt(prompt.match(/(\d+)/)?.[1] || 30);
 
     let svg;
-    if (/aula|clase|salon|salón|escuela|colegio|conferencia|auditorio|catedra|cátedra/.test(lower)) {
-        svg = generarLayoutAula(personCount);
+    if (/auditorio|escenario|escena|teatro|teatral|conferencista/.test(lower)) {
+        svg = generarLayoutAuditorio(personCount);
+    }
+    else if (/feria|stand|stands|expo|expositor|exposici[oó]n/.test(lower)) {
+        svg = generarLayoutFeria(personCount);
+    }
+    else if (/comedor|banquete|rectangulares|cena|alimentos|food/.test(lower)) {
+        svg = generarLayoutComedor(personCount);
     }
     else if (/patio|exterior|aire libre|jardin|jardín|terraza|courtyard|plaza/.test(lower)) {
         svg = generarLayoutPatio(personCount);
+    }
+    else if (/aula|clase|sal[oó]n|escuela|colegio|conferencia|c[aá]tedra|seminario/.test(lower)) {
+        svg = generarLayoutAula(personCount);
+    }
+    else if (/circular|redonda|ronda|mesa redonda/.test(lower)) {
+        svg = generarLayoutCircular(personCount);
     }
     else {
         svg = generarLayoutCircular(personCount);
@@ -358,68 +370,288 @@ function dibujarRecursosEnSVG(svg, recursos) {
 }
 
 function generarLayoutCircular(personCount) {
-    const centerX = 250, centerY = 200;
-    const radius = 180;
-    const chairWidth = 8, chairDepth = 10;
-    const tableDiameter = 60;
+    const p = Math.min(Math.max(personCount, 8), 120);
 
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400">';
-    svg += '<rect width="500" height="400" fill="#fafafa"/>';
-    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#9ca3af">CIRCULAR · ' + personCount + ' personas</text>';
-    svg += '<g stroke="#e5e7eb" stroke-width="2">';
-    svg += '<line x1="250" y1="50" x2="250" y2="350" />';
-    svg += '<line x1="50" y1="200" x2="450" y2="200" />';
-    svg += '</g>';
+    svg += '<rect width="500" height="400" fill="#f9f7f2"/>';
 
-    const angularStep = (2 * Math.PI) / personCount;
-    const innerRadius = radius - 40;
+    // Muros perimetrales
+    svg += '<rect x="46" y="44" width="408" height="12" rx="2" fill="#a16207"/>';
+    svg += '<rect x="46" y="344" width="408" height="12" rx="2" fill="#a16207"/>';
+    svg += '<rect x="44" y="56" width="12" height="288" rx="2" fill="#a16207"/>';
+    svg += '<rect x="444" y="56" width="12" height="288" rx="2" fill="#a16207"/>';
 
-    for (let i = 0; i < personCount; i++) {
-        const angle = i * angularStep - Math.PI / 2;
-        const tableX = centerX + (innerRadius / 2) * Math.cos(angle);
-        const tableY = centerY + (innerRadius / 2) * Math.sin(angle);
-        svg += `<circle cx="${tableX}" cy="${tableY}" r="${tableDiameter/2}" fill="#1f2937"/>`;
+    // Pista/centro decorativo
+    svg += '<circle cx="250" cy="200" r="52" fill="#f3ece1" stroke="#d6c5a8" stroke-width="2"/>';
+    svg += '<circle cx="250" cy="200" r="14" fill="#e8dcc8"/>';
+    svg += '<circle cx="244" cy="192" r="8" fill="#c9a86a"/>';
+    svg += '<circle cx="260" cy="202" r="9" fill="#c9a86a"/>';
+    svg += '<circle cx="250" cy="213" r="8" fill="#c9a86a"/>';
 
-        const chairAngle = angle + Math.PI / personCount;
-        const cX = centerX + (radius - 15) * Math.cos(chairAngle);
-        const cY = centerY + (radius - 15) * Math.sin(chairAngle);
-        svg += `<rect x="${cX - chairWidth/2}" y="${cY - chairDepth/2}" width="${chairWidth}" height="${chairDepth}" fill="#6b7280"/>`;
-    }
+    // Buffets en las esquinas
+    const buffets = [[70, 70], [424, 70], [70, 320], [424, 320]];
+    buffets.forEach(([bx, by]) => {
+        svg += `<rect x="${bx}" y="${by}" width="44" height="20" rx="4" fill="#e7e5e4" stroke="#a8a29e"/>`;
+        svg += `<rect x="${bx + 4}" y="${by + 3}" width="8" height="6" rx="2" fill="#f59e0b"/>`;
+        svg += `<rect x="${bx + 15}" y="${by + 3}" width="8" height="6" rx="2" fill="#ef4444"/>`;
+        svg += `<rect x="${bx + 26}" y="${by + 3}" width="8" height="6" rx="2" fill="#10b981"/>`;
+    });
 
+    // Mesas circulares alrededor del centro con sillas a su alrededor
+    const tables = [[370, 200], [335, 285], [250, 312], [165, 285], [130, 200], [165, 115], [250, 88], [335, 115]];
+    const seatsPerTable = new Array(tables.length).fill(0);
+    for (let i = 0; i < p; i++) seatsPerTable[i % tables.length]++;
+
+    tables.forEach(([tx, ty], idx) => {
+        const seats = seatsPerTable[idx];
+        svg += `<circle cx="${tx}" cy="${ty}" r="20" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>`;
+        svg += `<circle cx="${tx}" cy="${ty}" r="10" fill="#e2e8f0"/>`;
+        const step = (2 * Math.PI) / seats;
+        for (let j = 0; j < seats; j++) {
+            const ang = step * j - Math.PI / 2;
+            const cx = (tx + 28 * Math.cos(ang)).toFixed(1);
+            const cy = (ty + 28 * Math.sin(ang)).toFixed(1);
+            svg += `<rect x="${cx - 5}" y="${cy - 4}" width="10" height="8" rx="1.5" fill="#6b7280"/>`;
+        }
+        // Florero sobre la mesa
+        if (idx % 2 === 0) {
+            svg += `<circle cx="${tx}" cy="${ty}" r="4" fill="#fbcfe8"/>`;
+            svg += `<circle cx="${tx}" cy="${ty - 2}" r="2.5" fill="#ec4899"/>`;
+        }
+    });
+
+    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#4b5563">BANQUETE CIRCULAR · ' + p + ' personas</text>';
     svg += '</svg>';
     return svg;
 }
 
 function generarLayoutAula(personCount) {
-    const chairsPerRow = 10;
-    const rows = Math.ceil(personCount / chairsPerRow);
+    const p = Math.min(Math.max(personCount, 8), 60);
+    const chairsPerRow = 8;
+    const rows = Math.ceil(p / chairsPerRow);
 
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400">';
-    svg += '<rect width="500" height="400" fill="#fafafa"/>';
-    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#9ca3af">AULA · ' + personCount + ' personas</text>';
+    svg += '<rect width="500" height="400" fill="#f7f3ea"/>';
 
-    svg += '<rect x="150" y="28" width="200" height="10" rx="2" fill="#374151"/>';
-    svg += '<rect x="233" y="42" width="34" height="14" rx="2" fill="#1f2937"/>';
+    // Paredes
+    svg += '<rect x="46" y="44" width="408" height="12" rx="2" fill="#57534e"/>';
+    svg += '<rect x="46" y="344" width="408" height="12" rx="2" fill="#57534e"/>';
+    svg += '<rect x="44" y="56" width="12" height="288" rx="2" fill="#57534e"/>';
+    svg += '<rect x="444" y="56" width="12" height="288" rx="2" fill="#57534e"/>';
 
-    const deskW = 28, deskH = 16, chairW = 16, chairH = 10;
-    const pitchX = 40, pitchY = 42;
-    const startXLeft = 45, startXRight = 265, startY = 76;
-    const colsHalf = chairsPerRow / 2;
+    // Ventanas laterales
+    svg += '<rect x="56" y="120" width="8" height="120" rx="2" fill="#bae6fd"/>';
+    svg += '<rect x="56" y="128" width="8" height="38" fill="#e0f2fe"/>';
+    svg += '<rect x="56" y="174" width="8" height="38" fill="#e0f2fe"/>';
+    svg += '<rect x="436" y="120" width="8" height="120" rx="2" fill="#bae6fd"/>';
+    svg += '<rect x="436" y="128" width="8" height="38" fill="#e0f2fe"/>';
+    svg += '<rect x="436" y="174" width="8" height="38" fill="#e0f2fe"/>';
 
-    for (let i = 0; i < personCount; i++) {
+    // Pizarra y escritorio del docente
+    svg += '<rect x="130" y="58" width="240" height="14" rx="2" fill="#334155"/>';
+    svg += '<rect x="228" y="78" width="44" height="16" rx="2" fill="#1f2937"/>';
+    svg += '<rect x="240" y="96" width="20" height="10" rx="2" fill="#6b7280"/>';
+
+    // Pupitres: 2 bloques con pasillo central
+    const deskW = 30, deskH = 16, chairW = 16, chairH = 10;
+    const pitchX = 42, pitchY = 32;
+    const startXLeft = 70, startXRight = 256, startY = 118;
+
+    for (let i = 0; i < p; i++) {
         const row = Math.floor(i / chairsPerRow);
         const posInRow = i % chairsPerRow;
-        const side = posInRow < colsHalf ? 0 : 1;
-        const colInSide = posInRow % colsHalf;
+        const side = posInRow < chairsPerRow / 2 ? 0 : 1;
+        const colInSide = posInRow % (chairsPerRow / 2);
         const x = (side === 0 ? startXLeft : startXRight) + colInSide * pitchX;
         const y = startY + row * pitchY;
         svg += `<rect x="${x}" y="${y}" width="${deskW}" height="${deskH}" rx="2" fill="#1f2937"/>`;
         svg += `<rect x="${x + (deskW - chairW) / 2}" y="${y + deskH + 3}" width="${chairW}" height="${chairH}" rx="2" fill="#6b7280"/>`;
     }
 
-    svg += '<line x1="250" y1="76" x2="250" y2="330" stroke="#e5e7eb" stroke-width="2"/>';
-    svg += '<rect x="238" y="340" width="24" height="40" fill="#ffffff" stroke="#9ca3af"/>';
-    svg += '<line x1="238" y1="340" x2="238" y2="380" stroke="#9ca3af"/>';
+    // Pasillo central y puerta de salida (arriba a la derecha)
+    svg += '<line x1="250" y1="118" x2="250" y2="330" stroke="#d6d3d1" stroke-width="3"/>';
+    svg += '<rect x="330" y="330" width="44" height="14" fill="#ffffff" stroke="#9ca3af"/>';
+    svg += '<rect x="344" y="344" width="30" height="40" fill="#ffffff" stroke="#9ca3af"/>';
+    svg += '<circle cx="366" cy="337" r="2.5" fill="#9ca3af"/>';
+
+    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#4b5563">AULA · ' + p + ' personas</text>';
+    svg += '</svg>';
+    return svg;
+}
+
+function generarLayoutAuditorio(personCount) {
+    const p = Math.min(Math.max(personCount, 8), 80);
+    const seatsPerRow = 10;
+    const rows = Math.ceil(p / seatsPerRow);
+
+    let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400">';
+    svg += '<rect width="500" height="400" fill="#eef2f7"/>';
+
+    // Paredes
+    svg += '<rect x="46" y="44" width="408" height="12" rx="2" fill="#475569"/>';
+    svg += '<rect x="46" y="344" width="408" height="12" rx="2" fill="#475569"/>';
+    svg += '<rect x="44" y="56" width="12" height="288" rx="2" fill="#475569"/>';
+    svg += '<rect x="444" y="56" width="12" height="288" rx="2" fill="#475569"/>';
+
+    // Escenario
+    svg += '<rect x="80" y="50" width="340" height="52" rx="4" fill="#4b5563"/>';
+    svg += '<rect x="88" y="58" width="324" height="36" rx="3" fill="#64748b"/>';
+    svg += '<rect x="226" y="60" width="48" height="24" rx="2" fill="#1e293b"/>';
+    svg += '<circle cx="250" cy="72" r="6" fill="#60a5fa"/>';
+    svg += '<text x="250" y="114" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#475569">ESCENARIO</text>';
+
+    // Butacas: 2 bloques con pasillo central
+    const chairW = 14, chairH = 12;
+    const pitchX = 17, pitchY = 30;
+    const colsHalf = seatsPerRow / 2;
+    const startXLeft = 92, startXRight = 276, startY = 130;
+
+    for (let i = 0; i < p; i++) {
+        const row = Math.floor(i / seatsPerRow);
+        const posInRow = i % seatsPerRow;
+        const side = posInRow < colsHalf ? 0 : 1;
+        const colInSide = posInRow % colsHalf;
+        const x = (side === 0 ? startXLeft : startXRight) + colInSide * pitchX;
+        const y = startY + row * pitchY;
+        svg += `<rect x="${x}" y="${y}" width="${chairW}" height="${chairH}" rx="2" fill="#1d4ed8"/>`;
+    }
+
+    // Pasillo central
+    svg += '<line x1="250" y1="130" x2="250" y2="330" stroke="#cbd5e1" stroke-width="3"/>';
+
+    // Puertas de salida traseras
+    svg += '<rect x="96" y="336" width="26" height="10" fill="#ffffff" stroke="#94a3b8"/>';
+    svg += '<rect x="378" y="336" width="26" height="10" fill="#ffffff" stroke="#94a3b8"/>';
+    svg += '<circle cx="118" cy="341" r="2" fill="#94a3b8"/>';
+    svg += '<circle cx="400" cy="341" r="2" fill="#94a3b8"/>';
+
+    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#4b5563">AUDITORIO · ' + p + ' personas</text>';
+    svg += '</svg>';
+    return svg;
+}
+
+function generarLayoutFeria(personCount) {
+    const p = Math.min(Math.max(personCount, 8), 120);
+
+    let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400">';
+    svg += '<rect width="500" height="400" fill="#fff8ec"/>';
+
+    // Muros
+    svg += '<rect x="46" y="44" width="408" height="12" rx="2" fill="#8d6e63"/>';
+    svg += '<rect x="46" y="344" width="408" height="12" rx="2" fill="#8d6e63"/>';
+    svg += '<rect x="44" y="56" width="12" height="288" rx="2" fill="#8d6e63"/>';
+    svg += '<rect x="444" y="56" width="12" height="288" rx="2" fill="#8d6e63"/>';
+
+    // Pasillos
+    svg += '<rect x="245" y="56" width="10" height="288" fill="#fce3c8"/>';
+    svg += '<rect x="46" y="196" width="408" height="10" fill="#fce3c8"/>';
+
+    // Stands perimetrales (arriba y abajo)
+    const coloresStands = ['#f9a8d4', '#a5f3fc', '#fde047', '#86efac', '#fdba74', '#c4b5fd'];
+    for (let i = 0; i < 6; i++) {
+        const x = 58 + i * 64;
+        const color = coloresStands[i % coloresStands.length];
+        svg += `<rect x="${x}" y="66" width="56" height="34" rx="3" fill="#ffffff" stroke="#cbd5e1"/>`;
+        svg += `<rect x="${x}" y="66" width="56" height="9" rx="3" fill="${color}"/>`;
+        svg += `<line x1="${x + 15}" y1="84" x2="${x + 15}" y2="96" stroke="#cbd5e1"/>`;
+        svg += `<circle cx="${x + 10}" cy="94" r="2.5" fill="#cbd5e1"/>`;
+        svg += `<circle cx="${x + 22}" cy="94" r="2.5" fill="#cbd5e1"/>`;
+        svg += `<circle cx="${x + 34}" cy="94" r="2.5" fill="#cbd5e1"/>`;
+        svg += `<rect x="${x}" y="300" width="56" height="34" rx="3" fill="#ffffff" stroke="#cbd5e1"/>`;
+        svg += `<rect x="${x}" y="300" width="56" height="9" rx="3" fill="${color}"/>`;
+        svg += `<line x1="${x + 15}" y1="318" x2="${x + 15}" y2="330" stroke="#cbd5e1"/>`;
+        svg += `<circle cx="${x + 10}" cy="328" r="2.5" fill="#cbd5e1"/>`;
+        svg += `<circle cx="${x + 22}" cy="328" r="2.5" fill="#cbd5e1"/>`;
+        svg += `<circle cx="${x + 34}" cy="328" r="2.5" fill="#cbd5e1"/>`;
+    }
+
+    // Stands laterales
+    for (let i = 0; i < 2; i++) {
+        const y = 116 + i * 76;
+        const color = coloresStands[(i + 2) % coloresStands.length];
+        svg += `<rect x="58" y="${y}" width="34" height="60" rx="3" fill="#ffffff" stroke="#cbd5e1"/>`;
+        svg += `<rect x="58" y="${y}" width="9" height="60" rx="3" fill="${color}"/>`;
+        svg += `<line x1="76" y1="${y + 14}" x2="88" y2="${y + 14}" stroke="#cbd5e1"/>`;
+        svg += `<rect x="408" y="${y}" width="34" height="60" rx="3" fill="#ffffff" stroke="#cbd5e1"/>`;
+        svg += `<rect x="433" y="${y}" width="9" height="60" rx="3" fill="${color}"/>`;
+        svg += `<line x1="416" y1="${y + 14}" x2="428" y2="${y + 14}" stroke="#cbd5e1"/>`;
+    }
+
+    // Zona central de descanso: mesas pequeñas con sillas
+    const mesitasDescanso = [[130, 150], [185, 150], [130, 252], [185, 252], [315, 150], [370, 150], [315, 252], [370, 252]];
+    const sillasMesitas = new Array(mesitasDescanso.length).fill(0);
+    for (let i = 0; i < p; i++) sillasMesitas[i % mesitasDescanso.length]++;
+
+    mesitasDescanso.forEach(([tx, ty], idx) => {
+        const sillas = sillasMesitas[idx];
+        svg += `<circle cx="${tx}" cy="${ty}" r="12" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>`;
+        svg += `<circle cx="${tx}" cy="${ty}" r="6" fill="#e2e8f0"/>`;
+        const step = (2 * Math.PI) / sillas;
+        for (let j = 0; j < sillas; j++) {
+            const ang = step * j - Math.PI / 2;
+            const cx = (tx + 19 * Math.cos(ang)).toFixed(1);
+            const cy = (ty + 19 * Math.sin(ang)).toFixed(1);
+            svg += `<rect x="${cx - 4}" y="${cy - 3.5}" width="8" height="7" rx="1.5" fill="#6b7280"/>`;
+        }
+        // Sombrilla de colores en mesas alternas
+        if (idx % 2 === 0) {
+            svg += `<circle cx="${tx}" cy="${ty}" r="8" fill="${coloresStands[(idx / 2) % coloresStands.length]}" opacity="0.9"/>`;
+            svg += `<circle cx="${tx}" cy="${ty}" r="2.5" fill="#ffffff"/>`;
+        }
+    });
+
+    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#4b5563">FERIA · ' + p + ' personas</text>';
+    svg += '</svg>';
+    return svg;
+}
+
+function generarLayoutComedor(personCount) {
+    const p = Math.min(Math.max(personCount, 8), 120);
+
+    let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400">';
+    svg += '<rect width="500" height="400" fill="#fdf6ee"/>';
+
+    // Muros
+    svg += '<rect x="46" y="44" width="408" height="12" rx="2" fill="#a16207"/>';
+    svg += '<rect x="46" y="344" width="408" height="12" rx="2" fill="#a16207"/>';
+    svg += '<rect x="44" y="56" width="12" height="288" rx="2" fill="#a16207"/>';
+    svg += '<rect x="444" y="56" width="12" height="288" rx="2" fill="#a16207"/>';
+
+    // Mesa buffet al frente
+    svg += '<rect x="196" y="58" width="108" height="16" rx="3" fill="#d6c9b3"/>';
+    svg += '<rect x="200" y="60" width="100" height="12" rx="2" fill="#e7dfd2"/>';
+    svg += '<circle cx="216" cy="66" r="3" fill="#f59e0b"/>';
+    svg += '<circle cx="232" cy="66" r="3" fill="#ef4444"/>';
+    svg += '<circle cx="248" cy="66" r="3" fill="#10b981"/>';
+    svg += '<circle cx="264" cy="66" r="3" fill="#3b82f6"/>';
+    svg += '<circle cx="280" cy="66" r="3" fill="#8b5cf6"/>';
+
+    // Dos mesas largas rectangulares
+    const tableY = [128, 268];
+    const tableX = 70, tableW = 360, tableH = 48;
+    tableY.forEach((ty, ti) => {
+        svg += `<rect x="${tableX}" y="${ty}" width="${tableW}" height="${tableH}" rx="4" fill="#ffffff" stroke="#d6c5a8" stroke-width="2"/>`;
+        for (let i = 0; i < 6; i++) {
+            const vx = 80 + i * 62;
+            svg += `<circle cx="${vx}" cy="${ty + tableH / 2}" r="4" fill="#fbcfe8"/>`;
+            svg += `<circle cx="${vx}" cy="${ty + tableH / 2 - 2}" r="2" fill="#ec4899"/>`;
+        }
+    });
+
+    // Sillas a ambos lados de cada mesa larga
+    for (let i = 0; i < p; i++) {
+        const ti = i % 2;                  // mesa (arriba / abajo)
+        const local = Math.floor(i / 2);    // asiento dentro de la mesa
+        const lado = local % 2;             // 0 arriba, 1 abajo
+        const slot = Math.floor(local / 2);
+        const ty = tableY[ti];
+        const yChair = lado === 0 ? ty - 14 : ty + tableH + 4;
+        const x = 86 + slot * 27;
+        if (x + 12 > 444) continue;
+        svg += `<rect x="${x}" y="${yChair}" width="12" height="8" rx="2" fill="#b45309"/>`;
+    }
+
+    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#4b5563">COMEDOR · ' + p + ' personas</text>';
     svg += '</svg>';
     return svg;
 }

@@ -223,7 +223,8 @@ function clasificarRecurso(r) {
     const nombre = (r.nombre_recurso || '').toLowerCase();
     const tipo = (r.recurso_tipo || '').toLowerCase();
 
-    if (/pantalla|proyector|proyec|televisor|tv|plasma|lcd|led/.test(nombre)) return 'pantalla';
+    if (/proyector|proyec/.test(nombre)) return 'proyector';
+    if (/pantalla|televisor|tv|plasma|lcd|led/.test(nombre)) return 'pantalla';
     if (/sonido|parlante|bafle|altavoz|amplif|ac[uú]stic|tweeter|subwoofer|micr[oó]fono/.test(nombre)) return 'sonido';
     if (/mesa|tabla|banquete|comedor/.test(nombre) && !/mantel/.test(nombre)) return 'mesa';
     if (/silla|butaca|asiento|pupitre|banco/.test(nombre)) return 'silla';
@@ -237,10 +238,11 @@ function clasificarRecurso(r) {
 }
 
 function dibujarRecursosEnSVG(svg, recursos) {
-    const buckets = { pantalla: [], sonido: [], mesa: [], silla: [], vajilla: [], tecnologico: [], mobiliario: [], otro: [] };
+    const buckets = { pantalla: [], proyector: [], sonido: [], mesa: [], silla: [], vajilla: [], tecnologico: [], mobiliario: [], otro: [] };
     recursos.forEach(r => buckets[clasificarRecurso(r)].push(r));
 
     const pantallas = buckets.pantalla;
+    const proyector = buckets.proyector;
     const sonido = buckets.sonido;
     const mesas = buckets.mesa;
     const sillas = buckets.silla;
@@ -258,6 +260,20 @@ function dibujarRecursosEnSVG(svg, recursos) {
         extra += '<rect x="200" y="56" width="100" height="56" rx="2" fill="#60a5fa"/>';
         extra += '<circle cx="250" cy="84" r="15" fill="none" stroke="#bfdbfe" stroke-width="2"/>';
         extra += '<text x="250" y="120" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#475569">Pantalla</text>';
+        extra += '</g>';
+    }
+
+    // ── Proyector (colgado arriba a la izquierda, con haz al frente) ──────
+    if (proyector.length > 0) {
+        extra += '<g id="rec-proyector">';
+        const nProy = Math.min(Math.max(proyector.reduce((acc, r) => acc + (parseInt(r.cantidad) || 1), 0), 0), 3);
+        for (let i = 0; i < nProy; i++) {
+            const px = 56 + i * 34;
+            extra += `<rect x="${px}" y="28" width="26" height="13" rx="2" fill="#0f172a"/>`;
+            extra += `<circle cx="${px + 24}" cy="34" r="4" fill="#f59e0b"/>`;
+            extra += `<polygon points="${px + 8},41 ${px + 24},41 ${px + 70},116 ${px - 30},116" fill="#fef3c7" opacity="0.4"/>`;
+            extra += `<text x="${px + 2}" y="126" font-family="sans-serif" font-size="8" fill="#475569">Proyector</text>`;
+        }
         extra += '</g>';
     }
 
@@ -351,9 +367,23 @@ function dibujarRecursosEnSVG(svg, recursos) {
         extra += `<g id="rec-mobiliario">${draw}</g>`;
     }
 
+    // ── Otros recursos sin ícono específico (ej: adornos, toldos, marcos):
+    //    cajitas pequeñas abajo a la derecha, para que todo recurso
+    //    agregado también sea visible en el plano y no solo en la leyenda. ─
+    if (otro.length > 0) {
+        let draw = '';
+        otro.slice(0, 8).forEach((r, i) => {
+            const x = 430 - (i % 4) * 26;
+            const y = 350 + Math.floor(i / 4) * 18;
+            draw += `<rect x="${x}" y="${y}" width="16" height="12" rx="2" fill="#6d28d9"/>`;
+            draw += `<circle cx="${x + 8}" cy="${y + 6}" r="3" fill="#ddd6fe"/>`;
+        });
+        extra += `<g id="rec-otro">${draw}</g>`;
+    }
+
     // ── Leyenda de recursos en la parte inferior (incluye TODOS los
     //    recursos seleccionados, tengan o no ícono propio en el plano) ───
-    const todos = [...pantallas, ...sonido, ...mesas, ...sillas, ...vajilla, ...tecnologicoGenerico, ...mobiliarioGenerico, ...otro];
+    const todos = [...pantallas, ...proyector, ...sonido, ...mesas, ...sillas, ...vajilla, ...tecnologicoGenerico, ...mobiliarioGenerico, ...otro];
     let leyenda = '';
     if (todos.length > 0) {
         let lx = 14;

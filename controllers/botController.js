@@ -617,8 +617,9 @@ async function generarPDFEvento(evento, usuario) {
       }
       if (layoutImageBuffer) {
         try {
-          const img = doc.image(layoutImageBuffer, 75, doc.y, { fit: [450, 300], align: 'center' });
-          doc.moveDown(0.6);
+          doc.image(layoutImageBuffer, 75, doc.y, { fit: [450, 300], align: 'center' });
+          // Avanzar doc.y por debajo de la imagen (300px de altura + margen)
+          doc.y += 310;
         } catch (e) {
           console.warn('⚠️ No se pudo incrustar layout:', e.message);
         }

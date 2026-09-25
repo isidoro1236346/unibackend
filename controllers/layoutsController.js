@@ -425,43 +425,65 @@ function generarLayoutAula(personCount) {
 }
 
 function generarLayoutPatio(personCount) {
-    const topLen = 414, rightLen = 288, bottomLen = 414, leftLen = 288;
-    const total = topLen + rightLen + bottomLen + leftLen;
-    const nTop = Math.round(personCount * topLen / total);
-    const nRight = Math.round(personCount * rightLen / total);
-    const nBottom = Math.round(personCount * bottomLen / total);
-    const nLeft = personCount - nTop - nRight - nBottom;
+    const p = Math.min(Math.max(personCount, 8), 120);
 
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400">';
-    svg += '<rect width="500" height="400" fill="#fafafa"/>';
-    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#9ca3af">PATIO · ' + personCount + ' personas</text>';
+    svg += '<rect width="500" height="400" fill="#e8f0df"/>';
 
-    svg += '<rect x="46" y="46" width="414" height="10" rx="2" fill="#374151"/>';
-    svg += '<rect x="46" y="344" width="414" height="10" rx="2" fill="#374151"/>';
-    svg += '<rect x="44" y="56" width="10" height="288" rx="2" fill="#374151"/>';
-    svg += '<rect x="446" y="56" width="10" height="288" rx="2" fill="#374151"/>';
+    // Caminos de piedra
+    svg += '<rect x="246" y="56" width="8" height="288" fill="#e7dcc0"/>';
+    svg += '<rect x="46" y="196" width="408" height="8" fill="#e7dcc0"/>';
 
-    const chairW = 20, chairH = 18;
+    // Muros perimetrales
+    svg += '<rect x="46" y="44" width="408" height="12" rx="2" fill="#a16207"/>';
+    svg += '<rect x="46" y="344" width="408" height="12" rx="2" fill="#a16207"/>';
+    svg += '<rect x="44" y="56" width="12" height="288" rx="2" fill="#a16207"/>';
+    svg += '<rect x="444" y="56" width="12" height="288" rx="2" fill="#a16207"/>';
 
-    for (let i = 0; i < nTop; i++) {
-        const x = 46 + (i + 0.5) * (414 / nTop) - chairW / 2;
-        svg += `<rect x="${x}" y="60" width="${chairW}" height="${chairH}" rx="3" fill="#6b7280"/>`;
-    }
-    for (let i = 0; i < nRight; i++) {
-        const y = 56 + (i + 0.5) * (288 / nRight) - chairH / 2;
-        svg += `<rect x="416" y="${y}" width="${chairW}" height="${chairH}" rx="3" fill="#6b7280"/>`;
-    }
-    for (let i = 0; i < nBottom; i++) {
-        const x = 46 + (i + 0.5) * (414 / nBottom) - chairW / 2;
-        svg += `<rect x="${x}" y="318" width="${chairW}" height="${chairH}" rx="3" fill="#6b7280"/>`;
-    }
-    for (let i = 0; i < nLeft; i++) {
-        const y = 56 + (i + 0.5) * (288 / nLeft) - chairH / 2;
-        svg += `<rect x="60" y="${y}" width="${chairW}" height="${chairH}" rx="3" fill="#6b7280"/>`;
-    }
+    // Bancas laterales
+    svg += '<rect x="62" y="118" width="10" height="72" rx="3" fill="#b45309"/>';
+    svg += '<rect x="64" y="120" width="6" height="8" fill="#92400e"/>';
+    svg += '<rect x="428" y="118" width="10" height="72" rx="3" fill="#b45309"/>';
+    svg += '<rect x="430" y="120" width="6" height="8" fill="#92400e"/>';
 
-    svg += '<circle cx="250" cy="200" r="26" fill="#bfdbfe" stroke="#93c5fd" stroke-width="2"/>';
-    svg += '<circle cx="250" cy="200" r="10" fill="#93c5fd"/>';
+    // Macetas en las esquinas
+    const esquinas = [[70, 68], [418, 68], [70, 322], [418, 322]];
+    esquinas.forEach(([x, y]) => {
+        svg += `<circle cx="${x}" cy="${y}" r="10" fill="#4d7c0f"/>`;
+        svg += `<circle cx="${x - 6}" cy="${y + 3}" r="7" fill="#65a30d"/>`;
+        svg += `<circle cx="${x + 5}" cy="${y + 4}" r="8" fill="#4d7c0f"/>`;
+        svg += `<rect x="${x - 7}" y="${y + 8}" width="14" height="12" rx="2" fill="#c2410c"/>`;
+    });
+
+    // Fuente central
+    svg += '<circle cx="250" cy="200" r="34" fill="#bae6fd" stroke="#7dd3fc" stroke-width="2"/>';
+    svg += '<circle cx="250" cy="200" r="14" fill="#38bdf8" stroke="#0ea5e9" stroke-width="2"/>';
+    svg += '<circle cx="250" cy="188" r="5" fill="#7dd3fc"/>';
+
+    // Mesas redondas con sillas a su alrededor
+    const mesas = [[135, 105], [250, 84], [365, 105], [88, 220], [412, 220], [135, 300], [250, 308], [365, 300]];
+    const sillasMesas = new Array(mesas.length).fill(0);
+    for (let i = 0; i < p; i++) sillasMesas[i % mesas.length]++;
+
+    mesas.forEach(([tx, ty], idx) => {
+        const sillas = sillasMesas[idx];
+        svg += `<circle cx="${tx}" cy="${ty}" r="20" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>`;
+        svg += `<circle cx="${tx}" cy="${ty}" r="10" fill="#e2e8f0"/>`;
+        const step = (2 * Math.PI) / sillas;
+        for (let j = 0; j < sillas; j++) {
+            const a = step * j - Math.PI / 2;
+            const cx = (tx + 27 * Math.cos(a)).toFixed(1);
+            const cy = (ty + 27 * Math.sin(a)).toFixed(1);
+            svg += `<rect x="${cx - 5}" y="${cy - 4}" width="10" height="8" rx="1.5" fill="#6b7280"/>`;
+        }
+        // Parasol en mesas alternas
+        if (idx % 3 === 0) {
+            svg += `<circle cx="${tx}" cy="${ty}" r="13" fill="#fb923c" opacity="0.85"/>`;
+            svg += `<circle cx="${tx}" cy="${ty}" r="4" fill="#fff7ed"/>`;
+        }
+    });
+
+    svg += '<text x="14" y="20" font-family="sans-serif" font-size="11" fill="#4b5563">PATIO · ' + p + ' personas</text>';
     svg += '</svg>';
     return svg;
 }

@@ -18,7 +18,7 @@ const Actividad=sequelize.define('Actividad',{
       
     },
     nombre:{
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(255),
         allowNull: false,
         unique: true,
         field: 'nombre',

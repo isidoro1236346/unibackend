@@ -106,6 +106,20 @@ const startServer = async () => {
     console.log('✅ PostgreSQL Conectado Exitosamente.');
     console.log('✅ Modelos y asociaciones inicializados correctamente.');
 
+    // --- Fix idempotente: ampliar actividades.nombre a varchar(255) ---
+    // Los nombres de actividades generados por IA superan varchar(50) y
+    // provocan "value too long for type character varying(50)". Este ALTER
+    // es seguro de ejecutar en cada arranque (no falla si ya está aplicado).
+    try {
+      await sequelize.query(
+        `ALTER TABLE actividades ALTER COLUMN nombre TYPE TEXT`
+      );
+      console.log('✅ Columna actividades.nombre ampliada a TEXT (fix de longitud).');
+    } catch (alterError) {
+      // Fallo temporal (tabla aún no creada) no debe tumbar el servidor.
+      console.warn('⚠️ No se pudo ampliar actividades.nombre:', alterError.message);
+    }
+
     app.use('/auth',          require('./routes/authRoutes.js'));
     app.use('/categories',    require('./routes/categoryRoutes.js'));
     app.use('/locations',     require('./routes/locationRoutes.js'));

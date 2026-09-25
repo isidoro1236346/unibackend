@@ -17,7 +17,7 @@ const Servicio=sequelize.define('Servicio',{
       
     },
     nombreservicio:{
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(255),
         allowNull: false,
         unique: true,
         field: 'nombreservicio',
@@ -29,13 +29,13 @@ const Servicio=sequelize.define('Servicio',{
 
     
     caracteristicas:{
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(255),
         allowNull: false,
         unique: true,
         field: 'caracteristicas',
     },
     observaciones:{
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(255),
         allowNull: false,
         field: 'observaciones',
     },

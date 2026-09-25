@@ -184,10 +184,12 @@ module.exports = (io) => {
         timestamp: new Date().toISOString()
       });
 
+      notificarSala(io, { roomId, userId, userName, role, message });
+
       try {
         const { getModels } = require('../models');
         const { ChatMensaje } = getModels();
-        
+
         await ChatMensaje.create({
           idevento: null,
           idusuario: parseInt(userId),
@@ -197,11 +199,9 @@ module.exports = (io) => {
           room_id: roomId,
         });
 
-        notificarSala(io, { roomId, userId, userName, role, message });
-        console.log(`✅ [PRIVADO] Mensaje guardado y emitido a sala ${roomId}`);
+        console.log(`✅ [PRIVADO] Mensaje emitido y guardado en sala ${roomId}`);
       } catch (e) {
-        console.error('❌ [PRIVADO] Error guardando en BD:', e.message);
-        notificarSala(io, { roomId, userId, userName, role, message });
+        console.error('❌ [PRIVADO] No se pudo guardar el mensaje:', e.message);
       }
 
       await persistirNotificacionPrivada({
@@ -389,12 +389,25 @@ module.exports = (io) => {
       }
 
       // ==========================================
-      // 3. GUARDAR Y EMITIR EL MENSAJE DEL USUARIO (Tu código original intacto)
+      // 3. EMITIR PRIMERO Y GUARDAR DESPUÉS
       // ==========================================
+      // Emitir antes de persistir garantiza que el mensaje se muestre de
+      // inmediato; si la BD falla, el aviso de error ya no se pierde.
+      io.to(room).emit('receive_message', {
+        userId: parseInt(userId),
+        userName: userName || 'Usuario',
+        role,
+        message,
+        esBot: false,
+        timestamp: new Date().toISOString()
+      });
+
+      notificarSala(io, { roomId: eventoId, userId, userName, role, message });
+
       try {
         const { getModels } = require('../models');
         const { ChatMensaje } = getModels();
-        
+
         await ChatMensaje.create({
           idevento: eventoId === 'general' ? null : parseInt(eventoId),
           idusuario: parseInt(userId),
@@ -404,20 +417,9 @@ module.exports = (io) => {
           ...(eventoId === 'general' ? { room_id: 'general' } : {})
         });
 
-        io.to(room).emit('receive_message', {
-          userId: parseInt(userId),
-          userName: userName || 'Usuario',
-          role,
-          message,
-          esBot: false,
-          timestamp: new Date().toISOString()
-        });
-
-        notificarSala(io, { roomId: eventoId, userId, userName, role, message });
-        console.log(`✅ [EVENTO] Mensaje emitido a: ${room}`);
+        console.log(`✅ [EVENTO] Mensaje emitido y guardado en: ${room}`);
       } catch (e) {
-        console.error('❌ [EVENTO] Error:', e.message);
-        socket.emit('error', { message: e.message });
+        console.error('❌ [EVENTO] No se pudo guardar el mensaje:', e.message);
       }
     });
 

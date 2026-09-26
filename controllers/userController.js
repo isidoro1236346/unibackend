@@ -1,8 +1,23 @@
 const  {getModels} = require('../models/index.js');
-const  { Op, where } = require('sequelize');
+const  { Op, where, Sequelize } = require('sequelize');
 const  bcrypt = require('bcryptjs'); 
 const  asyncHandler = require('express-async-handler'); 
 const  jwt = require('jsonwebtoken');
+
+
+// La columna `daf.idusuario` está creada como VARCHAR en la base, mientras que
+// `usuario.idusuario` es INTEGER. Postgres no admite `integer = character varying`
+// y el JOIN reventaba con HTTP 500 ("operator does not exist: integer = character
+// varying"), dejando sin datos a /users/daf y a /users.
+//
+// models/Daf.js ya declara INTEGER, que es lo correcto. El esquema es lo que miente.
+// Forzamos el cotejo como texto para que la consulta sirva con cualquiera de los dos
+// tipos: así funciona igual antes y después de arreglar la columna con
+//   ALTER TABLE daf ALTER COLUMN idusuario TYPE integer USING idusuario::integer;
+// (sobre una tabla de un puñado de filas, el cast no afecta performance).
+const DAF_JOIN_ON = Sequelize.literal(
+  'CAST("User".idusuario AS TEXT) = CAST(daf.idusuario AS TEXT)'
+);
 
 
 const createUser = asyncHandler(async (req, res) => {
@@ -135,7 +150,8 @@ const getAllUsers = asyncHandler(async (req, res) => {
     {
       model: Daf,
       as: 'daf',
-      attributes: ['nivelAcceso'] // Nivel de acceso para usuarios con rol DAF
+      attributes: ['nivelAcceso'], // Nivel de acceso para usuarios con rol DAF
+      on: DAF_JOIN_ON
     }
   ],
   attributes: { exclude: ['contrasenia'] } // Excluye la contraseña por seguridad
@@ -151,7 +167,8 @@ const getUsersDaf = asyncHandler(async (req, res) => {
       {
         model: Daf,
         as: 'daf', // Asegúrate de que este alias coincida con tu asociación
-        attributes: ['nivelAcceso'] // Solo traer el nivel de acceso
+        attributes: ['nivelAcceso'], // Solo traer el nivel de acceso
+        on: DAF_JOIN_ON
       }
     ],
     attributes: { exclude: ['contrasenia'] } // Excluye la contraseña por seguridad

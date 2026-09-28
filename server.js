@@ -133,6 +133,30 @@ const startServer = async () => {
       }
     }
 
+    // --- Tabla de suscripciones Web Push ---
+    // No se crea con sync() porque el resto del proyecto no lo usa: se genera
+    // con CREATE TABLE IF NOT EXISTS para no depender de esa opción.
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS "dispositivo_push" (
+          "iddispositivo"        SERIAL PRIMARY KEY,
+          "idusuario"            INTEGER NOT NULL REFERENCES "usuario"("idusuario") ON DELETE CASCADE,
+          "endpoint"             TEXT NOT NULL UNIQUE,
+          "p256dh"               TEXT NOT NULL,
+          "auth"                 TEXT NOT NULL,
+          "user_agent"           VARCHAR(255),
+          "expiracion"           TIMESTAMP WITH TIME ZONE,
+          "ultimo_envio"         TIMESTAMP WITH TIME ZONE,
+          "fallidos_consecutivos" INTEGER NOT NULL DEFAULT 0,
+          "created_at"           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          "updated_at"           TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `);
+      console.log('✅ Tabla dispositivo_push verificada (Web Push).');
+    } catch (pushTableError) {
+      console.warn('⚠️ No se pudo verificar dispositivo_push:', pushTableError.message);
+    }
+
     app.use('/auth',          require('./routes/authRoutes.js'));
     app.use('/categories',    require('./routes/categoryRoutes.js'));
     app.use('/locations',     require('./routes/locationRoutes.js'));
@@ -155,6 +179,19 @@ const startServer = async () => {
     app.use('/chat',           require('./routes/chatRoutes.js'));
     const chatSocket = require('./sockets/chatSocket.js');
     chatSocket(io);
+
+    // Aviso temprano si falta la configuración de Web Push: sin esto el chat
+    // sigue funcionando por socket, pero nadie recibiría avisos con la app
+    // cerrada, que es justo el síntoma que se estaba reportando.
+    const { configurarVapid, hayClaves } = (() => {
+      const svc = require('./services/webPushService.js');
+      return { configurarVapid: svc.configurarVapid, hayClaves: Boolean(process.env.WEB_PUSH_PUBLIC_KEY && process.env.WEB_PUSH_PRIVATE_KEY) };
+    })();
+    if (hayClaves) {
+      configurarVapid();
+    } else {
+      console.warn('⚠️ [PUSH] Web Push sin claves VAPID: define WEB_PUSH_PUBLIC_KEY y WEB_PUSH_PRIVATE_KEY en .env');
+    }
     app.get('/health', (req, res) => {
       res.json({ status: 'ok', message: '✅ API Funcionando!', timestamp: new Date().toISOString() });
     });

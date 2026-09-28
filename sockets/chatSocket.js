@@ -46,6 +46,8 @@ const esMiembroDeSalaPrivada = (roomId, userId) => {
   return ids.includes(Number(userId));
 };
 
+const esSalaPrivada = (roomId) => idsDeSalaPrivada(roomId) !== null;
+
 const esRoomDeEventoValido = (eventoId) => {
   const clave = String(eventoId ?? '').trim();
   return clave === 'general' || /^\d+$/.test(clave);
@@ -91,6 +93,105 @@ const cargarHistorial = async (where, limite) => {
     esBot: m.role === 'bot',
     timestamp: m.createdAt,
   }));
+};
+
+/**
+ * Cuenta y marca como leídas las notificaciones de chat privado pendientes de
+ * una conversación. Es el puente entre la tabla `notificacion` (que se
+ * escribía cuando el destinatario no tenía socket) y la lista de la UI: sin
+ * esto el mensaje se guardaba pero no dejaba rastro de que estuviera sin leer.
+ *
+ * Se llama al abrir la conversación, no al recibir: así el contador refleja
+ * "lo que había sin ver", que es justo lo que el usuario necesita distinguir.
+ */
+const marcarNotificacionesPrivadasLeidas = async ({ roomId, userId, otroId }) => {
+  try {
+    const { getModels } = require('../models');
+    const { sequelize } = getModels();
+    const ahora = new Date().toISOString();
+
+    const [{ count }] = await sequelize.query(
+      `SELECT COUNT(*)::int AS count FROM notificacion
+       WHERE idusuario = :userId
+         AND id_relacionado = :otroId
+         AND tipo = 'chat_privado'
+         AND estado != 'leido'`,
+      { replacements: { userId, otroId }, type: sequelize.QueryTypes.SELECT }
+    );
+
+    if (!count) return 0;
+
+    await sequelize.query(
+      `UPDATE notificacion
+       SET estado = 'leido', updated_at = :ahora
+       WHERE idusuario = :userId
+         AND id_relacionado = :otroId
+         AND tipo = 'chat_privado'
+         AND estado != 'leido'`,
+      { replacements: { userId, otroId, ahora }, type: sequelize.QueryTypes.UPDATE }
+    );
+
+    console.log(`✅ [PRIVADO] ${count} notificación(es) marcada(s) como leída(s) en ${roomId}`);
+    return count;
+  } catch (e) {
+    console.warn('⚠️ [PRIVADO] Error al marcar notificaciones como leídas:', e.message);
+    return 0;
+  }
+};
+
+/** Resumen de pendientes por conversación, para hidratar los contadores. */
+const contarNotificacionesPrivadasPendientes = async ({ userId, otroId }) => {
+  try {
+    const { getModels } = require('../models');
+    const { sequelize } = getModels();
+
+    const [{ count }] = await sequelize.query(
+      `SELECT COUNT(*)::int AS count FROM notificacion
+       WHERE idusuario = :userId
+         AND id_relacionado = :otroId
+         AND tipo = 'chat_privado'
+         AND estado != 'leido'`,
+      { replacements: { userId, otroId }, type: sequelize.QueryTypes.SELECT }
+    );
+
+    return count || 0;
+  } catch (e) {
+    return 0;
+  }
+};
+
+/**
+ * Pendientes de todas las conversaciones privadas del usuario,indexadas por
+ * roomId. Se usa en `personal_channel` para que el contador de la lista exista
+ * desde el primer render y no solo después del primer polling.
+ */
+const pendientesPorConversacion = async (userId) => {
+  try {
+    const { getModels } = require('../models');
+    const { sequelize } = getModels();
+
+    const filas = await sequelize.query(
+      `SELECT id_relacionado, COUNT(*)::int AS count
+       FROM notificacion
+       WHERE idusuario = :userId AND tipo = 'chat_privado' AND estado != 'leido'
+       GROUP BY id_relacionado`,
+      { replacements: { userId }, type: sequelize.QueryTypes.SELECT }
+    );
+
+    const yo = Number(userId);
+    const resultado = {};
+    filas.forEach((f) => {
+      const otro = Number(f.id_relacionado);
+      if (!Number.isInteger(otro) || otro === yo) return;
+      const roomId = 'private_' + [yo, otro].sort((a, b) => a - b).join('_');
+      resultado[roomId] = resultado[roomId] || 0;
+      resultado[roomId] += f.count;
+    });
+    return resultado;
+  } catch (e) {
+    console.warn('⚠️ [PRIVADO] Error al leer pendientes:', e.message);
+    return {};
+  }
 };
 
 // Los listeners de notificación (ChatAlertas / ChatEmbed admin) solo se
@@ -174,6 +275,35 @@ const notificarSala = async (io, { roomId, userId, userName, role, message, time
     };
 
     unicos.forEach(canal => io.to(canal).emit('chat_notification', payload));
+
+    // Los chats de evento tampoco tienen push. connectedUsers se pasaba aquí
+    // pero nunca se miraba, así que el mensaje se perdía en silencio para
+    // cualquiera que no tuviera el socket abierto en ese instante.
+    if (!esSalaPrivada(roomId)) {
+      const { enviarPushAUsuario } = require('../services/webPushService');
+      const esGeneral = String(roomId) === 'general';
+      const titulo = esGeneral
+        ? 'Nuevo mensaje en el Chat General'
+        : `Nuevo mensaje en ${roomName || 'un evento'}`;
+      const cuerpo = String(message || '').slice(0, 120);
+
+      for (const canal of unicos) {
+        const idDestino = Number(String(canal).replace('usuario_', ''));
+        if (!Number.isInteger(idDestino)) continue;
+        enviarPushAUsuario({
+          idusuario: idDestino,
+          titulo,
+          cuerpo,
+          data: {
+            type: esGeneral ? 'general' : 'evento',
+            roomId: String(roomId),
+            roomName,
+            idRelacionado: senderId,
+            emisor: userName || null,
+          },
+        }).catch(() => {});
+      }
+    }
   } catch (e) {
     console.warn('❌ [NOTIF] Error al notificar:', e.message);
   }
@@ -219,6 +349,22 @@ const persistirNotificacionPrivada = async ({ roomId, senderId, senderName, mess
     }
 
     console.log(`✅ [PRIVADO] Notificación persistida para usuario ${otroId} (sala ${roomId})`);
+
+    // La fila en `notificacion` solo servía para que el mensaje apareciera al
+    // abrir el chat: nunca llegaba al dispositivo. Ahora se envía también como
+    // push del navegador, que es lo que cubre al usuario con la app cerrada.
+    const { enviarPushAUsuario } = require('../services/webPushService');
+    await enviarPushAUsuario({
+      idusuario: otroId,
+      titulo,
+      cuerpo: mensaje,
+      data: {
+        type: 'private',
+        roomId: String(roomId),
+        idRelacionado: senderId,
+        emisor: senderName || null,
+      },
+    });
   } catch (e) {
     console.warn('❌ [PRIVADO] Error al persistir notificación:', e.message);
   }
@@ -285,6 +431,12 @@ module.exports = (io) => {
       userName: userNameAuth,
     });
 
+    // Pendientes por conversación desde el momento de conectar, para que los
+    // contadores de la lista existan sin esperar al primer polling de 20 s.
+    pendientesPorConversacion(userIdAuth).then((pendientes) => {
+      socket.emit('pending_private', { pendientes });
+    }).catch(() => {});
+
     if (!connectedUsers.has(userIdAuth)) connectedUsers.set(userIdAuth, new Set());
     connectedUsers.get(userIdAuth).add(socket.id);
 
@@ -313,6 +465,20 @@ module.exports = (io) => {
         privateRooms.set(roomIdValido, new Set());
       }
       privateRooms.get(roomIdValido).add(String(userIdAuth));
+
+      // Al abrir la conversación se salda lo pendiente. Se emite antes que el
+      // historial para que el cliente pueda limpiar su contador al recibirlo.
+      const ids = idsDeSalaPrivada(roomIdValido) || [];
+      const otroId = ids.find(n => n !== Number(userIdAuth));
+      let marcados = 0;
+      if (otroId != null) {
+        marcados = await marcarNotificacionesPrivadasLeidas({
+          roomId: roomIdValido,
+          userId: userIdAuth,
+          otroId,
+        });
+      }
+      socket.emit('private_read', { roomId: roomIdValido, marcados });
 
       try {
         const historial = await cargarHistorial({ idevento: null, room_id: roomIdValido }, 100);

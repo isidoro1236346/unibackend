@@ -430,24 +430,83 @@ function clasificarRecurso(r) {
     return 'otro';
 }
 
-function dibujarRecursosEnSVG(svg, recursos) {
-    const CATEGORIA_COLOR = {
-        pantalla: '#1e293b', proyector: '#0f172a', sonido: '#312e81',
-        mesa: '#b45309', silla: '#c2410c', vajilla: '#d97706',
-        tecnologico: '#0891b2', mobiliario: '#78350f', otro: '#6d28d9',
-    };
-    const CATEGORIA_ICON = {
-        pantalla: '▮', proyector: '◤', sonido: '♫', mesa: '◯', silla: '▯',
-        vajilla: '•', tecnologico: '▣', mobiliario: '▬', otro: '◈',
-    };
+// Dibuja una unidad (forma real) de una categoría en la coordenada dada.
+function dibujarIconoUnidad(cat, x, y) {
+    switch (cat) {
+        case 'mesa':
+            return `<circle cx="${x}" cy="${y}" r="14" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/><circle cx="${x}" cy="${y}" r="7" fill="#e2e8f0" stroke="#cbd5e1"/>`;
+        case 'silla':
+            return `<rect x="${x - 5}" y="${y - 4}" width="10" height="8" rx="1.5" fill="#c2410c" opacity="0.9"/>`;
+        case 'pantalla':
+            return `<rect x="${x - 34}" y="${y - 22}" width="68" height="44" rx="3" fill="#1e293b"/><rect x="${x - 30}" y="${y - 18}" width="60" height="36" rx="2" fill="#60a5fa"/>`;
+        case 'proyector':
+            return `<rect x="${x - 12}" y="${y - 7}" width="24" height="14" rx="2" fill="#0f172a"/><circle cx="${x + 12}" cy="${y}" r="3" fill="#f59e0b"/>`;
+        case 'sonido':
+            return `<rect x="${x - 7}" y="${y - 23}" width="14" height="46" rx="3" fill="#312e81"/><circle cx="${x}" cy="${y - 8}" r="5" fill="#6366f1"/><circle cx="${x}" cy="${y + 10}" r="4" fill="#818cf8"/>`;
+        case 'vajilla':
+            return `<circle cx="${x}" cy="${y}" r="4" fill="#f59e0b" stroke="#b45309" stroke-width="1"/>`;
+        case 'tecnologico':
+            return `<rect x="${x - 8}" y="${y - 6}" width="16" height="12" rx="2" fill="#0891b2"/><circle cx="${x}" cy="${y}" r="3" fill="#a5f3fc"/>`;
+        case 'mobiliario':
+            return `<rect x="${x - 10}" y="${y - 7}" width="20" height="14" rx="2" fill="#78350f"/><rect x="${x - 6}" y="${y - 3}" width="12" height="6" rx="1" fill="#d97706"/>`;
+        default:
+            return `<rect x="${x - 8}" y="${y - 6}" width="16" height="12" rx="2" fill="#6d28d9"/><circle cx="${x}" cy="${y}" r="3" fill="#ddd6fe"/>`;
+    }
+}
 
+const GAP_GRUPO = {
+    mesa: 34,
+    silla: 14,
+    pantalla: 8,
+    proyector: 30,
+    sonido: 22,
+    vajilla: 12,
+    tecnologico: 22,
+    mobiliario: 26,
+    otro: 20,
+};
+
+// Dibuja `cantidad` íconos reales de la categoría agrupados alrededor del
+// punto (x, y) dado por la IA. Así, si el usuario agregó "10 sillas", en el
+// plano se ven 10 sillas de verdad (y no un solo chip con un badge ×10).
+function dibujarGrupoPosicionado(r, cat, x, y) {
+    const cantidad = Math.min(Math.max(parseInt(r.cantidad, 10) || 1, 1), 40);
+    const gap = GAP_GRUPO[cat] || 20;
+
+    // Grilla envolvente: acomoda las unidades en filas de 5 alrededor de (x,y).
+    const cols = Math.min(Math.max(cantidad, 1), 5);
+    const rows = Math.ceil(cantidad / cols);
+    const ancho = (cols - 1) * gap + (cat === 'silla' || cat === 'mesa' ? 14 : 36);
+    const alto = (rows - 1) * gap + (cat === 'sonido' ? 0 : 22);
+
+    const ox = Math.max(0, Math.min(x - ancho / 2, 500 - ancho));
+    const oy = Math.max(0, Math.min(y - alto / 2, 400 - alto));
+
+    let draw = '';
+    for (let i = 0; i < cantidad; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const iy = oy + row * gap + (cat === 'mesa' ? 14 : cat === 'silla' ? 4 : 12);
+        draw += dibujarIconoUnidad(cat, ox + col * gap + (cat === 'mesa' || cat === 'silla' ? 7 : 18), iy);
+    }
+
+    // Etiqueta del recurso debajo del grupo (o encima si queda cerca del borde).
+    const label = escapeXml(String(r.nombre_recurso || 'Recurso')).substring(0, 16);
+    const lt = oy + alto + 10;
+    const ly = lt > 385 ? oy - 4 : lt;
+    draw += `<text x="${ox + ancho / 2}" y="${ly}" text-anchor="middle" font-family="sans-serif" font-size="7.5" fill="#475569">${label} ×${cantidad}</text>`;
+
+    return `<g transform="translate(0,0)">${draw}</g>`;
+}
+
+function dibujarRecursosEnSVG(svg, recursos) {
     const buckets = { pantalla: [], proyector: [], sonido: [], mesa: [], silla: [], vajilla: [], tecnologico: [], mobiliario: [], otro: [] };
 
     let extra = '';
 
     // Recursos con posición explícita (vienen del plan de Gemini): se dibujan
-    // exactamente en su coordenada como un chip con etiqueta, sin meterse en
-    // los buckets fijos.
+    // en su coordenada como `cantidad` íconos reales de la categoría (sillas,
+    // mesas, parlantes...) en lugar de un solo chip con etiqueta.
     const posicionados = (recursos || []).filter(r => r.x !== null && r.x !== undefined && r.y !== null && r.y !== undefined);
 
     (recursos || []).filter(r => r.x === null || r.x === undefined || r.y === null || r.y === undefined)
@@ -457,21 +516,10 @@ function dibujarRecursosEnSVG(svg, recursos) {
         extra += '<g id="rec-posicionados">';
         posicionados.forEach(r => {
             // Regresa al lienzo 500×400 aunque la IA de coordenadas extremas.
-            const x = Math.max(4, Math.min(Number(r.x) || 30, 462));
-            const y = Math.max(4, Math.min(Number(r.y) || 60, 356));
+            const x = Math.max(8, Math.min(Number(r.x) || 30, 400));
+            const y = Math.max(8, Math.min(Number(r.y) || 60, 320));
             const cat = clasificarRecurso(r);
-            const color = CATEGORIA_COLOR[cat] || '#6d28d9';
-            const icono = CATEGORIA_ICON[cat] || '◈';
-            const label = escapeXml(String(r.nombre_recurso || 'Recurso')).substring(0, 18);
-            extra += `<g transform="translate(${x},${y})">`;
-            extra += `<rect x="0" y="0" width="96" height="26" rx="5" fill="${color}" opacity="0.92"/>`;
-            extra += `<text x="7" y="18" font-family="sans-serif" font-size="13" fill="#ffffff">${icono}</text>`;
-            extra += `<text x="24" y="17" font-family="sans-serif" font-size="9" fill="#ffffff">${label}</text>`;
-            if ((r.cantidad || 1) > 1) {
-                extra += `<circle cx="96" cy="0" r="9" fill="#e11d48"/>`;
-                extra += `<text x="96" y="6" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#fff">${r.cantidad}</text>`;
-            }
-            extra += '</g>';
+            extra += dibujarGrupoPosicionado(r, cat, x, y);
         });
         extra += '</g>';
     }

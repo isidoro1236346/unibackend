@@ -35,6 +35,6 @@ const uploadLayout = multer({
 router.post('/', protect, uploadLayout.single('imagen'), crearLayout);
 router.get('/', protect, obtenerLayouts);
 router.delete('/:id', protect, eliminarLayout);
-router.post('/ia', generarLayoutIA); // 👈 antes sin `protect`: cualquiera sin login podía generar layouts
+router.post('/ia', protect, generarLayoutIA);
 
 module.exports = router;

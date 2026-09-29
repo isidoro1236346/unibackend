@@ -4,6 +4,13 @@ const asyncHandler = require('express-async-handler');
 const fs = require('fs');
 const path = require('path');
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const hasGeminiKey = !!GEMINI_API_KEY;
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+
+// Modelos estables en orden de preferencia (mismo patrón que botController).
+const MODELOS_GEMINI_LAYOUT = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.1-pro-preview'];
+
 const crearLayout = asyncHandler(async (req, res) => {
   try {
     const { nombre } = req.body;
@@ -107,7 +114,21 @@ const generarLayoutIA = asyncHandler(async (req, res) => {
       cantidad: parseInt(r.cantidad) > 0 ? parseInt(r.cantidad) : 1,
     })) : [];
 
-    const svgCode = generarSVGLayout(prompt.trim(), recursosNorm);
+    // 1) Intentar IA real (Gemini) si hay key y recursos.
+    let svgCode = null;
+    let usadoIa = false;
+    if (hasGeminiKey) {
+      const plan = await generarPlanConGemini(prompt.trim(), recursosNorm);
+      if (plan) {
+        svgCode = construirSVGDesdePlan(plan, recursosNorm);
+        usadoIa = !!svgCode;
+      }
+    }
+
+    // 2) Fallback: generador determinista local (regex + plantillas).
+    if (!svgCode) {
+      svgCode = generarSVGLayout(prompt.trim(), recursosNorm);
+    }
 
     if (!svgCode || !svgCode.startsWith('<svg')) {
       return res.status(500).json({ 
@@ -149,8 +170,10 @@ const generarLayoutIA = asyncHandler(async (req, res) => {
     res.status(201).json({ 
       success: true, 
       message: 'Layout generado exitosamente',
+      usadoIa,
       layout: {
         id: nuevoLayout.idlayout,
+        idlayout: nuevoLayout.idlayout,
         nombre: nuevoLayout.nombre,
         url_imagen: nuevoLayout.url_imagen,
         imagenUrl: `${req.protocol}://${req.get('host')}${urlImagen}`
@@ -212,6 +235,176 @@ function escapeXml(value = '') {
         .replace(/'/g, '&apos;');
 }
 
+// ─── IA REAL (Gemini) ─────────────────────────────────────────────────────
+// Gemini decide: tipo de distribución, cantidad de personas y las
+// coordenadas (x, y) en píxeles de cada recurso dentro de un lienzo 500×400.
+// Respuesta esperada (SOLO JSON, sin markdown):
+// {
+//   "distribucion": "circular|aula|auditorio|feria|comedor|patio",
+//   "personas": 30,
+//   "recursos": [
+//     { "nombre": "Proyector Epson", "x": 60, "y": 40, "cantidad": 1 }
+//   ]
+// }
+async function generarPlanConGemini(prompt, recursos) {
+  const listaRecursos = (recursos || []).map(r =>
+    `- "${r.nombre_recurso}" (tipo: ${r.recurso_tipo}, cantidad: ${r.cantidad})`
+  ).join('\n');
+
+  const systemInstruction = `Eres un diseñador de planos para eventos universitarios. Dibujas sobre un lienzo SVG de 500×400 píxeles: el eje X va de 0 a 500 (de izquierda a derecha) y el Y de 0 a 400 (de arriba hacia abajo).
+
+Debes responder SOLO con JSON válido, sin texto adicional, sin bloques de código markdown. El JSON DEBE tener exactamente esta forma:
+
+{
+  "distribucion": "circular",
+  "personas": 30,
+  "recursos": [
+    { "nombre": "Proyector Epson", "x": 60, "y": 40, "cantidad": 1 }
+  ]
+}
+
+Reglas:
+1. "distribucion" DEBE ser uno de estos valores exactos: "circular", "aula", "auditorio", "feria", "comedor", "patio".
+2. "personas" es el número estimado de asistentes derivado del prompt del usuario (entero entre 1 y 200).
+3. "recursos" es un arreglo donde cada elemento corresponde EXACTAMENTE a uno de los ${recursos.length} recursos listados abajo. El campo "nombre" DEBE reproducir textualmente el nombre del recurso. NO agregues recursos que no estén en la lista y NO omitas ninguno.
+4. "x" y "y" son las coordenadas en píxeles donde se colocará el recurso. Colócalos con sentido según la distribución elegida:
+   - auditorio: pantalla/proyector al frente (arriba), proyector colgado arriba a la izquierda, sonido en las esquinas traseras.
+   - aula: pizarrón al frente, pupitres en filas, recursos en los bordes.
+   - feria: stands en filas o cuadrícula, recursos en los puestos.
+   - circular: mesas redondas en el centro, recursos alrededor por los bordes.
+   - comedor: mesas largas en filas, vajilla sobre las mesas, recursos en los bordes.
+   - patio: al aire libre, mesas y recursos distribuidos alrededor de una zona central.
+5. Coloca cada recurso en una posición razonable que no se superponga con los demás. Mantén x entre 15 y 475, e y entre 15 y 380. Usa "cantidad" con el valor exacto que viene en la lista.
+6. Ordena los recursos en el arreglo en el MISMO orden en que vienen abajo.`;
+
+  const userText = `Prompt del usuario: "${prompt}"
+
+Recursos a colocar (${recursos.length}):
+${listaRecursos}
+
+Devuelve el JSON del plano.`;
+
+  const ejecutar = async (modelName) => {
+    const model = genAI.getGenerativeModel(
+      {
+        model: modelName,
+        systemInstruction,
+        generationConfig: {
+          temperature: 0.4,
+          responseMimeType: 'application/json',
+        },
+      },
+      { timeout: 45000 }
+    );
+    const result = await model.generateContent(userText);
+    return result.response.text();
+  };
+
+  const ERRORES = ['error', 'exception', 'quota', 'unauthorized', 'not found', 'bad request'];
+
+  for (const modelName of MODELOS_GEMINI_LAYOUT) {
+    try {
+      const texto = await ejecutar(modelName);
+      const plan = parsePlanGemini(texto);
+      if (!plan) {
+        console.warn(`⚠️ [layouts IA] ${modelName} devolvió JSON inválido`);
+        continue;
+      }
+      return plan;
+    } catch (err) {
+      const msg = (err && err.message) || '';
+      console.error(`❌ [layouts IA] ${modelName} falló: ${msg}`);
+      if (ERRORES.some(e => msg.toLowerCase().includes(e)) && modelName !== MODELOS_GEMINI_LAYOUT[0]) {
+        continue;
+      }
+    }
+  }
+
+  return null;
+}
+
+// Convierte el texto (posiblemente con ruido markdown) en un plan validado.
+function parsePlanGemini(texto) {
+  if (!texto) return null;
+
+  // Quita bloques ```json ... ``` si el modelo los incluyó pese a las reglas.
+  let limpio = String(texto)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  const inicio = limpio.indexOf('{');
+  const fin = limpio.lastIndexOf('}');
+  if (inicio === -1 || fin === -1 || fin <= inicio) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(limpio.substring(inicio, fin + 1));
+  } catch (e) {
+    return null;
+  }
+
+  const DISTRIBUCIONES_VALIDAS = ['circular', 'aula', 'auditorio', 'feria', 'comedor', 'patio'];
+  const distribucion = DISTRIBUCIONES_VALIDAS.includes(parsed.distribucion)
+    ? parsed.distribucion
+    : 'circular';
+
+  const rec = Array.isArray(parsed.recursos) ? parsed.recursos : [];
+  const recursos = rec
+    .filter(r => r && typeof r.nombre === 'string' && r.nombre.trim())
+    .map(r => ({
+      nombre: r.nombre.trim(),
+      cantidad: Number.isFinite(parseInt(r.cantidad, 10)) && parseInt(r.cantidad, 10) > 0 ? parseInt(r.cantidad, 10) : 1,
+      x: Number.isFinite(Number(r.x)) ? Math.min(Math.max(Math.round(Number(r.x)), 15), 475) : null,
+      y: Number.isFinite(Number(r.y)) ? Math.min(Math.max(Math.round(Number(r.y)), 15), 380) : null,
+    }));
+
+  if (recursos.length === 0) return null;
+
+  return {
+    distribucion,
+    personas: Number.isFinite(parseInt(parsed.personas, 10)) ? Math.min(Math.max(parseInt(parsed.personas, 10), 1), 200) : 30,
+    recursos,
+  };
+}
+
+// Construye el SVG a partir del plan de Gemini. Si un recurso del inventario
+// no quedó posicionado por la IA (x/y null), cae a la clasificación local.
+function construirSVGDesdePlan(plan, recursosNorm) {
+  const generadores = {
+    circular: generarLayoutCircular,
+    aula: generarLayoutAula,
+    auditorio: generarLayoutAuditorio,
+    feria: generarLayoutFeria,
+    comedor: generarLayoutComedor,
+    patio: generarLayoutPatio,
+  };
+
+  const base = (generadores[plan.distribucion] || generarLayoutCircular)(plan.personas);
+
+  const items = (plan.recursos || []).map((r) => {
+    const inventario = recursosNorm.find(x => x.nombre_recurso === r.nombre);
+    if (inventario) {
+      return {
+        nombre_recurso: inventario.nombre_recurso,
+        recurso_tipo: inventario.recurso_tipo,
+        cantidad: r.cantidad,
+        x: r.x,
+        y: r.y,
+      };
+    }
+    return {
+      nombre_recurso: r.nombre,
+      recurso_tipo: '',
+      cantidad: r.cantidad,
+      x: r.x,
+      y: r.y,
+    };
+  });
+
+  return dibujarRecursosEnSVG(base, items);
+}
+
 // Clasifica un recurso del inventario en una categoría de dibujo.
 // 1º intenta reconocerlo por su nombre (más preciso: permite elegir el
 //    ícono exacto - pantalla, parlante, mesa, silla, vajilla).
@@ -238,8 +431,50 @@ function clasificarRecurso(r) {
 }
 
 function dibujarRecursosEnSVG(svg, recursos) {
+    const CATEGORIA_COLOR = {
+        pantalla: '#1e293b', proyector: '#0f172a', sonido: '#312e81',
+        mesa: '#b45309', silla: '#c2410c', vajilla: '#d97706',
+        tecnologico: '#0891b2', mobiliario: '#78350f', otro: '#6d28d9',
+    };
+    const CATEGORIA_ICON = {
+        pantalla: '▮', proyector: '◤', sonido: '♫', mesa: '◯', silla: '▯',
+        vajilla: '•', tecnologico: '▣', mobiliario: '▬', otro: '◈',
+    };
+
     const buckets = { pantalla: [], proyector: [], sonido: [], mesa: [], silla: [], vajilla: [], tecnologico: [], mobiliario: [], otro: [] };
-    recursos.forEach(r => buckets[clasificarRecurso(r)].push(r));
+
+    let extra = '';
+
+    // Recursos con posición explícita (vienen del plan de Gemini): se dibujan
+    // exactamente en su coordenada como un chip con etiqueta, sin meterse en
+    // los buckets fijos.
+    const posicionados = (recursos || []).filter(r => r.x !== null && r.x !== undefined && r.y !== null && r.y !== undefined);
+
+    (recursos || []).filter(r => r.x === null || r.x === undefined || r.y === null || r.y === undefined)
+        .forEach(r => buckets[clasificarRecurso(r)].push(r));
+
+    if (posicionados.length > 0) {
+        extra += '<g id="rec-posicionados">';
+        posicionados.forEach(r => {
+            // Regresa al lienzo 500×400 aunque la IA de coordenadas extremas.
+            const x = Math.max(4, Math.min(Number(r.x) || 30, 462));
+            const y = Math.max(4, Math.min(Number(r.y) || 60, 356));
+            const cat = clasificarRecurso(r);
+            const color = CATEGORIA_COLOR[cat] || '#6d28d9';
+            const icono = CATEGORIA_ICON[cat] || '◈';
+            const label = escapeXml(String(r.nombre_recurso || 'Recurso')).substring(0, 18);
+            extra += `<g transform="translate(${x},${y})">`;
+            extra += `<rect x="0" y="0" width="96" height="26" rx="5" fill="${color}" opacity="0.92"/>`;
+            extra += `<text x="7" y="18" font-family="sans-serif" font-size="13" fill="#ffffff">${icono}</text>`;
+            extra += `<text x="24" y="17" font-family="sans-serif" font-size="9" fill="#ffffff">${label}</text>`;
+            if ((r.cantidad || 1) > 1) {
+                extra += `<circle cx="96" cy="0" r="9" fill="#e11d48"/>`;
+                extra += `<text x="96" y="6" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#fff">${r.cantidad}</text>`;
+            }
+            extra += '</g>';
+        });
+        extra += '</g>';
+    }
 
     const pantallas = buckets.pantalla;
     const proyector = buckets.proyector;
@@ -383,7 +618,7 @@ function dibujarRecursosEnSVG(svg, recursos) {
 
     // ── Leyenda de recursos en la parte inferior (incluye TODOS los
     //    recursos seleccionados, tengan o no ícono propio en el plano) ───
-    const todos = [...pantallas, ...proyector, ...sonido, ...mesas, ...sillas, ...vajilla, ...tecnologicoGenerico, ...mobiliarioGenerico, ...otro];
+    const todos = [...pantallas, ...proyector, ...sonido, ...mesas, ...sillas, ...vajilla, ...tecnologicoGenerico, ...mobiliarioGenerico, ...otro, ...posicionados];
     let leyenda = '';
     if (todos.length > 0) {
         let lx = 14;

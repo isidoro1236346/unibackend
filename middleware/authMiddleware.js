@@ -27,6 +27,9 @@ const protect = async (req, res, next) => {
   try {
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
       token = req.headers.authorization.split(' ')[1];
+    } else if (req.query && req.query.token) {
+      // Permite autenticar peticiones sin cabecera, p.ej. <Image source={{ uri }}>.
+      token = req.query.token;
     }
 
     if (!token) {

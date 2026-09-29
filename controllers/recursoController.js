@@ -127,7 +127,10 @@ const getRecursoImagen = asyncHandler(async (req, res) => {
   const recurso = await Recurso.findByPk(req.params.id, {
     attributes: ['idrecurso', 'nombre_recurso', 'recurso_tipo', 'cantidad'],
   });
-  const svg = generarImagenRecursoSVG(recurso ? recurso.toJSON() : { nombre_recurso: 'Recurso' });
+  if (!recurso) {
+    return res.status(404).json({ message: 'Recurso no encontrado.' });
+  }
+  const svg = generarImagenRecursoSVG(recurso.toJSON());
   res.set(IMAGEN_RECURSO_HEADERS);
   res.send(svg);
 });
@@ -141,14 +144,17 @@ const createRecurso = asyncHandler(async (req, res) => {
   const { nombre_recurso, recurso_tipo, descripcion, habilitado, cantidad } = req.body;
 
   if (!nombre_recurso || !recurso_tipo) {
-    res.status(400);
-    throw new Error('Los campos "nombre_recurso" y "recurso_tipo" son obligatorios.');
+    return res.status(400).json({ message: 'Los campos "nombre_recurso" y "recurso_tipo" son obligatorios.' });
+  }
+
+  const TIPOS_VALIDOS = ['tecnologico', 'mobiliario', 'vajilla'];
+  if (!TIPOS_VALIDOS.includes(recurso_tipo)) {
+    return res.status(400).json({ message: 'El "recurso_tipo" debe ser uno de: tecnologico, mobiliario, vajilla.' });
   }
 
   // ✅ Validar cantidad si se envía
   if (cantidad !== undefined && (isNaN(cantidad) || cantidad < 0)) {
-    res.status(400);
-    throw new Error('La cantidad debe ser un número válido mayor o igual a 0.');
+    return res.status(400).json({ message: 'La cantidad debe ser un número válido mayor o igual a 0.' });
   }
 
   const nuevoRecurso = await Recurso.create({
@@ -181,9 +187,12 @@ const getRecursos = asyncHandler(async (req, res) => {
   const { Recurso } = models;
   
   try {
+    const incluirDeshabilitados = req.query.incluirDeshabilitados === 'true';
+
     const recursos = await Recurso.findAll({
       attributes: ['idrecurso', 'nombre_recurso', 'recurso_tipo', 'descripcion', 'habilitado', 'cantidad'],
       order: [['nombre_recurso', 'ASC']],
+      ...(!incluirDeshabilitados ? { where: { habilitado: 1 } } : {}),
     });
 
     console.log('✅ Recursos encontrados:', recursos.length);
@@ -218,6 +227,17 @@ const updateRecurso = asyncHandler(async (req, res) => {
   }
 
   const { nombre_recurso, recurso_tipo, descripcion, habilitado, cantidad } = req.body;
+
+  const TIPOS_VALIDOS = ['tecnologico', 'mobiliario', 'vajilla'];
+  if (recurso_tipo !== undefined && !TIPOS_VALIDOS.includes(recurso_tipo)) {
+    return res.status(400).json({ message: 'El "recurso_tipo" debe ser uno de: tecnologico, mobiliario, vajilla.' });
+  }
+  if (cantidad !== undefined && (isNaN(cantidad) || cantidad < 0)) {
+    return res.status(400).json({ message: 'La cantidad debe ser un número válido mayor o igual a 0.' });
+  }
+  if (nombre_recurso !== undefined && !String(nombre_recurso).trim()) {
+    return res.status(400).json({ message: 'El "nombre_recurso" no puede estar vacío.' });
+  }
 
   await recurso.update({
     nombre_recurso: nombre_recurso ?? recurso.nombre_recurso,

@@ -486,8 +486,6 @@ function dibujarRecursosEnSVG(svg, recursos) {
     const mobiliarioGenerico = buckets.mobiliario;
     const otro = buckets.otro;
 
-    let extra = '';
-
     // ── Pantallas / proyectores (frente del salón) ───────────────────────
     if (pantallas.length > 0) {
         extra += '<g id="rec-pantalla">';
